@@ -143,6 +143,29 @@ En `prueba-latencia/teclado.html`.
 - Conclusión provisional: lo primero es la cámara (luz, exposición manual,
   60 fps). Después, la salida de audio.
 
+### Tercera ronda: golpes perdidos, notas mantenidas y theremín
+
+- Con más luz la cámara pasa a **30 fps** reales: latencia total estimada
+  ≈ 92 ms (jitter 8,5 ms). Lo que más pesa ahora: salida de audio (~51 ms).
+- **Golpes perdidos**: había un fallo. Con dos manos, MediaPipe cambia a veces
+  el orden de las manos de un cuadro a otro, y cada dedo se identificaba por
+  ese orden; al cambiar, perdía su historial y el cruce no contaba. Ahora
+  cada mano se identifica por su lado (izquierda/derecha). Además:
+  - velocidad mínima más baja (0,3) y medida también en el propio tramo que
+    cruza la línea;
+  - rearme más sencillo (basta con subir un poco por encima de la línea);
+  - si la mano se pierde un momento y reaparece al otro lado de la línea,
+    el golpe suena igual;
+  - recuento en pantalla de los cruces que no sonaron y por qué.
+- **Notas mantenidas** (opcional): la tecla suena hasta que el dedo vuelve a
+  subir sobre la línea; también se suelta si se deja de ver el dedo 200 ms
+  (para que no se queden notas colgadas). En los loops se graba la duración.
+- **Theremín**: recuadro al lado de los pads (derecha o izquierda), con el
+  teclado algo más abajo. Lo controla el centro de la palma o la yema del
+  corazón: x = nota (dos octavas desde Do3, continuo o afinado a la escala),
+  y = intensidad. Suena mientras la mano está dentro; la mano que está en el
+  recuadro no da golpes. Todavía no se graba en los loops.
+
 ## ¿Móvil o PC?
 
 - La cámara de un móvil suele dar 30–60 fps reales, incluso con poca luz.
@@ -175,6 +198,9 @@ En `prueba-latencia/teclado.html`.
 - **2026-11-20** — Los loops se graban en pulsos, compensados y cuantizados;
   lanzar y silenciar pistas, siempre al compás.
 
+- **2026-11-20** — Theremín en un recuadro junto a los pads; notas del teclado
+  mantenidas hasta que el dedo sube.
+
 ## Pendiente de decidir
 
 - Resultado de la prueba: ¿es tocable? ¿A qué fps / resolución? ¿Con qué
@@ -186,3 +212,5 @@ En `prueba-latencia/teclado.html`.
 - Mapa de gestos y modos (qué mano toca, qué mano manda).
 - ¿Móvil, móvil como webcam o PC? Depende de las medidas con mejor cámara.
 - ¿Teclas negras o cambio de escala con un botón?
+- ¿Sirve el teclado con golpes, o se queda sólo theremín + pads + loops?
+- Grabar el theremín en los loops (automatización continua).

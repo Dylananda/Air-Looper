@@ -9,9 +9,11 @@ En la carpeta `prueba-latencia` hay dos páginas:
 
 - **`index.html` — prueba de la pinza**: ritmo de batería de fondo, pinza
   pulgar-índice = nota, medidas de latencia y calibración con metrónomo.
-- **`teclado.html` — teclado virtual y loops**: teclado de 2 octavas, pads de
-  percusión y 4 pistas de loop dibujados sobre la imagen de la cámara. Se
-  tocan bajando el dedo a través de la línea de color de cada botón.
+- **`teclado.html` — teclado, theremín y loops**: teclado de 2 octavas, pads
+  de percusión, recuadro de theremín y 4 pistas de loop dibujados sobre la
+  imagen de la cámara. Teclas, pads y pistas se tocan bajando el dedo a
+  través de la línea de color de cada botón; el theremín, metiendo la mano
+  en su recuadro.
 
 Las dos tienen el botón **«Copiar resumen»**, que copia todas las medidas
 para pegarlas en el chat.
@@ -51,10 +53,12 @@ descargar MediaPipe y el modelo de manos.
 2. **Iniciar cámara y audio** y, si quieres, **▶ Batería**.
 3. Baja el dedo índice **a través de la línea de color** que hay bajo cada
    tecla o pad. Para repetir la nota, súbelo por encima de la línea.
-4. **Loops**: golpe en «Pista 1» → cuenta atrás → toca durante el compás que
+4. **Theremín**: mete la mano en el recuadro morado: de izquierda a derecha
+   cambia la nota y de abajo arriba la intensidad.
+5. **Loops**: golpe en «Pista 1» → cuenta atrás → toca durante el compás que
    se graba → queda en bucle. Otro golpe la silencia en el compás siguiente.
    «Borrar» y luego una pista la vacía. También funciona con clics del ratón.
-5. Calibra con golpes (sección «Calibración») y pulsa **Usar el resultado**:
+6. Calibra con golpes (sección «Calibración») y pulsa **Usar el resultado**:
    así lo grabado queda en su sitio.
 
 Consejos: buena luz de frente, mano entera dentro del encuadre, cascos con

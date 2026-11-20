@@ -1,7 +1,10 @@
-// Prueba 2: teclado virtual, pads de percusión y botones de loop dibujados
-// sobre la imagen de la cámara. Se tocan con «golpes»: la yema del dedo
-// atraviesa hacia abajo la línea del borde inferior de un botón. También se
-// pueden pulsar con el ratón (útil para probar).
+// Prueba 2: teclado virtual, pads de percusión, theremín y botones de loop
+// dibujados sobre la imagen de la cámara. Teclas, pads y pistas se tocan con
+// «golpes»: la yema del dedo atraviesa hacia abajo la línea del borde inferior
+// de un botón. Las teclas pueden mantenerse sonando hasta que el dedo vuelve
+// a subir. El theremín suena mientras la mano está en su recuadro: de
+// izquierda a derecha, la afinación; de abajo arriba, la intensidad.
+// También se puede pulsar con el ratón (útil para probar).
 
 import { MotorAudio, midiAHz } from './audio.js';
 import { Secuenciador } from './secuenciador.js';
@@ -33,6 +36,11 @@ const MARGEN_X = 0.03;
 const ALTO_TECLA = 0.2;
 const ALTO_PAD = 0.13;
 const SEPARACION_PADS = 0.3; // de la línea de las teclas a la de los pads
+const ANCHO_THEREMIN = 0.34;
+const THEREMIN_GRAVE = 48; // Do3 a la izquierda del recuadro, dos octavas
+const THEREMIN_OCTAVAS = 2;
+const HISTERESIS_SOLTAR = 0.015; // el dedo suelta la tecla al subir esto sobre la línea
+const PERDIDA_SOLTAR_MS = 200; // sin ver el dedo este tiempo: se suelta la nota
 const ALTO_LOOP = 0.11;
 const SEPARACION_LOOPS = 0.25; // de la línea de los pads a la de los loops
 const BOTONES_LOOP = ['Pista 1', 'Pista 2', 'Pista 3', 'Pista 4', 'Borrar'];
@@ -43,7 +51,13 @@ const sec = new Secuenciador(motor);
 const golpes = new DetectorGolpes();
 const calibracion = new Calibracion(sec);
 const medidor = new Medidor(motor);
-const looper = new Looper(sec, (ev, t) => sonarEvento(ev, t, ev.vel));
+const looper = new Looper(sec, (ev, t) => {
+  // Las notas grabadas mantenidas llevan su duración (en pulsos).
+  const nota = sonarEvento(ev, t, ev.vel, ev.dur != null);
+  if (ev.dur != null) nota.soltar?.(t + ev.dur * sec.segPulso);
+});
+let theremin = null; // se crea al arrancar el audio
+let estadoTheremin = null; // { x, y, frecuencia, volumen } mientras suena
 
 const video = $('video');
 const capa = $('capa');
@@ -51,6 +65,7 @@ const g = capa.getContext('2d');
 
 const cancelaciones = new Map(); // dedo → cancelar nota prevista
 const sostenidos = new Map(); // dedo → { destino, paso } en modo repetir
+const mantenidas = new Map(); // dedo → nota mantenida { nota, destino, grabados, tIntencion, visto }
 const destellos = new Map(); // 'tecla:3' / 'pad:1' → instante del último golpe
 let ultimasManos = [];
 
@@ -69,8 +84,12 @@ function disposicion() {
     x0: MARGEN_X + i * ancho,
     x1: MARGEN_X + (i + 1) * ancho,
   }));
-  const anchoPads = 0.7;
-  const x0Pads = (1 - anchoPads) / 2;
+  // Pads a un lado y theremín al otro (o pads centrados si no hay theremín).
+  const lado = $('ladoTheremin').value; // 'derecha' | 'izquierda' | 'no'
+  const conTheremin = lado !== 'no';
+  const anchoPads = conTheremin ? 1 - 2 * MARGEN_X - ANCHO_THEREMIN - 0.06 : 0.7;
+  const x0Pads = !conTheremin ? (1 - anchoPads) / 2 : lado === 'derecha' ? MARGEN_X : 1 - MARGEN_X - anchoPads;
+  const x0Theremin = lado === 'derecha' ? 1 - MARGEN_X - ANCHO_THEREMIN : MARGEN_X;
   const pads = PADS.map((p, i) => ({
     ...p,
     x0: x0Pads + (i * anchoPads) / PADS.length + 0.008,
@@ -83,6 +102,9 @@ function disposicion() {
     x0: x0Loops + (i * anchoLoops) / BOTONES_LOOP.length + 0.008,
     x1: x0Loops + ((i + 1) * anchoLoops) / BOTONES_LOOP.length - 0.008,
   }));
+  const caja = conTheremin
+    ? { x0: x0Theremin, x1: x0Theremin + ANCHO_THEREMIN, y0: lineaLoops + 0.04, y1: lineaTeclas - ALTO_TECLA - 0.025 }
+    : null;
   return {
     lineaTeclas,
     lineaPads,
@@ -90,6 +112,7 @@ function disposicion() {
     teclas,
     pads,
     loops,
+    theremin: caja,
     lineas: [
       { id: 'loops', y: lineaLoops, x0: loops[0].x0, x1: loops.at(-1).x1 },
       { id: 'pads', y: lineaPads, x0: pads[0].x0, x1: pads.at(-1).x1 },
@@ -131,9 +154,24 @@ function analizar(resultado, { captura, tCuadro }) {
   const dedos = DEDOS[$('dedos').value];
   const fiable = captura != null;
   ultimasManos = [];
+  const vistas = new Set();
+  let controlTheremin = null;
 
   manos.forEach((puntos, i) => {
-    const mano = `${lateralidad[i]?.[0]?.categoryName || 'mano'}${i}`;
+    // Clave estable por mano: MediaPipe puede cambiar el orden de las manos
+    // de un cuadro a otro, así que no usamos el índice salvo si se repite.
+    let mano = lateralidad[i]?.[0]?.categoryName || 'mano';
+    if (vistas.has(mano)) mano += i;
+    vistas.add(mano);
+
+    // ¿Esta mano está tocando el theremín? Entonces no da golpes.
+    const control = puntoTheremin(puntos);
+    if (disp.theremin && dentro(disp.theremin, control)) {
+      controlTheremin ??= control;
+      ultimasManos.push({ puntos, yemas: [], theremin: control });
+      return;
+    }
+
     const yemas = [];
     for (const indice of dedos) {
       const clave = `${mano}-${indice}`;
@@ -141,6 +179,8 @@ function analizar(resultado, { captura, tCuadro }) {
       const y = puntos[indice].y;
       const ev = golpes.procesar(clave, x, y, tCuadro, disp.lineas);
       yemas.push({ clave, x, y });
+      const m = mantenidas.get(clave);
+      if (m) m.visto = tCuadro;
       if (!ev) continue;
 
       if (ev.tipo === 'golpe' || ev.tipo === 'prediccion') {
@@ -152,6 +192,7 @@ function analizar(resultado, { captura, tCuadro }) {
         const cancelar = cancelaciones.get(clave);
         cancelaciones.delete(clave);
         sostenidos.delete(clave);
+        mantenidas.delete(clave);
         medidor.cancelacion(Boolean(cancelar && cancelar()));
       }
     }
@@ -159,6 +200,89 @@ function analizar(resultado, { captura, tCuadro }) {
   });
   golpes.limpiar(tCuadro);
   repetirSostenidos(disp);
+  soltarMantenidas(disp, tCuadro);
+  tocarTheremin(disp, controlTheremin);
+}
+
+// ---------------------------------------------------------------------------
+// Notas mantenidas: suenan hasta que el dedo vuelve a subir sobre la línea
+// ---------------------------------------------------------------------------
+
+function soltarMantenidas(disp, tCuadro) {
+  const yemas = new Map(ultimasManos.flatMap((m) => m.yemas.map((y) => [y.clave, y])));
+  for (const [clave, m] of mantenidas) {
+    if (clave === 'raton') continue; // el ratón suelta con pointerup
+    const yema = yemas.get(clave);
+    const subio = yema && yema.y < disp.lineaTeclas - HISTERESIS_SOLTAR;
+    const perdido = !yema && tCuadro - m.visto > PERDIDA_SOLTAR_MS;
+    const largo = motor.ahora - m.tNota > 8;
+    if (subio || perdido || largo) soltar(clave);
+  }
+}
+
+function soltar(clave) {
+  const m = mantenidas.get(clave);
+  if (!m) return;
+  mantenidas.delete(clave);
+  const tSoltar = motor.ahora;
+  m.nota.soltar?.(tSoltar);
+  // Duración para las pistas que lo estaban grabando (en pulsos, compensada).
+  let dur = (tSoltar - cal.compensacionMs / 1000 - m.tIntencion) / sec.segPulso;
+  if ($('cuantizarGrabacion').checked) dur = Math.max(0.25, Math.round(dur * 4) / 4);
+  for (const ev of m.grabados) ev.dur = Math.max(0.1, dur);
+}
+
+// ---------------------------------------------------------------------------
+// Theremín
+// ---------------------------------------------------------------------------
+
+const PALMA = [0, 5, 9, 13, 17];
+
+/** Punto de control del theremín en coordenadas de pantalla (espejo). */
+function puntoTheremin(puntos) {
+  if ($('controlTheremin').value === 'corazon') return { x: 1 - puntos[12].x, y: puntos[12].y };
+  const x = PALMA.reduce((a, i) => a + puntos[i].x, 0) / PALMA.length;
+  const y = PALMA.reduce((a, i) => a + puntos[i].y, 0) / PALMA.length;
+  return { x: 1 - x, y };
+}
+
+function dentro(caja, p) {
+  return p.x >= caja.x0 && p.x <= caja.x1 && p.y >= caja.y0 && p.y <= caja.y1;
+}
+
+/** Nota MIDI (con decimales) para una posición horizontal 0–1 del recuadro. */
+function notaTheremin(fx) {
+  const continua = THEREMIN_GRAVE + fx * 12 * THEREMIN_OCTAVAS;
+  if (!$('afinarTheremin').checked) return continua;
+  // Afinado: la nota de la escala elegida más cercana.
+  const clases = new Set(ESCALAS[$('escala').value].map((m) => m % 12));
+  let mejor = Math.round(continua);
+  for (let d = 0; d <= 6; d++) {
+    const arriba = Math.round(continua) + d;
+    const abajo = Math.round(continua) - d;
+    const candidatos = [arriba, abajo].filter((m) => clases.has(((m % 12) + 12) % 12));
+    if (candidatos.length) {
+      mejor = candidatos.sort((a, b) => Math.abs(a - continua) - Math.abs(b - continua))[0];
+      break;
+    }
+  }
+  return mejor;
+}
+
+function tocarTheremin(disp, control) {
+  if (!theremin) return;
+  if (!disp.theremin || !control) {
+    if (estadoTheremin) theremin.callar();
+    estadoTheremin = null;
+    return;
+  }
+  const caja = disp.theremin;
+  const fx = (control.x - caja.x0) / (caja.x1 - caja.x0);
+  const fy = 1 - (control.y - caja.y0) / (caja.y1 - caja.y0); // arriba = fuerte
+  const midi = notaTheremin(fx);
+  const volumen = Math.min(1, Math.max(0, fy)) ** 1.5;
+  theremin.fijar(midiAHz(midi), volumen);
+  estadoTheremin = { x: control.x, y: control.y, midi, volumen };
 }
 
 function velocidadADinamica(v) {
@@ -172,14 +296,14 @@ function eventoDe(disp, destino, vel) {
   return { tipo: 'tecla', midi: disp.teclas[destino.i].midi, voz: $('voz').value, vel };
 }
 
-function sonarEvento(ev, t, vel) {
+function sonarEvento(ev, t, vel, sostener = false) {
   if (ev.tipo === 'pad') return PADS[ev.i].sonar(t, vel);
   const f = midiAHz(ev.midi);
-  return ev.voz === 'suave' ? motor.notaSuave(t, f, vel) : motor.notaPercusiva(t, f, vel);
+  return ev.voz === 'suave' ? motor.notaSuave(t, f, vel, sostener) : motor.notaPercusiva(t, f, vel, sostener);
 }
 
-function sonarDestino(disp, destino, t, vel) {
-  return sonarEvento(eventoDe(disp, destino, vel), t, vel);
+function sonarDestino(disp, destino, t, vel, sostener = false) {
+  return sonarEvento(eventoDe(disp, destino, vel), t, vel, sostener);
 }
 
 /** Siguiente punto de la rejilla (en semicorcheas por paso) a partir de t. */
@@ -220,7 +344,7 @@ function tocar(disp, clave, destino, ev, fiable) {
   }
   // Lo que se graba: el instante en que el músico quiso tocar (compensado).
   const tIntencion = tNota - cal.compensacionMs / 1000;
-  if (!calibracion.activa) looper.grabar(eventoDe(disp, destino, vel), tIntencion);
+  const grabados = calibracion.activa ? [] : looper.grabar(eventoDe(disp, destino, vel), tIntencion);
 
   if (modo.tipo !== 'libre') {
     if (!sec.sonando) arrancarBateria();
@@ -230,9 +354,13 @@ function tocar(disp, clave, destino, ev, fiable) {
   }
 
   const calibrando = calibracion.activa;
+  // Mantener: sólo teclas, y no en el modo de repetición (ya repite solo).
+  const mantener = $('mantener').checked && destino.tipo === 'tecla' && modo.tipo !== 'repetir' && !calibrando;
   if (!calibrando || cal.oirGesto) {
-    const cancelar = sonarDestino(disp, destino, tNota, vel);
-    if (esPrediccion) cancelaciones.set(clave, cancelar);
+    soltar(clave); // por si quedaba otra nota de este dedo
+    const nota = sonarDestino(disp, destino, tNota, vel, mantener);
+    if (esPrediccion) cancelaciones.set(clave, nota);
+    if (mantener) mantenidas.set(clave, { nota, destino, grabados, tIntencion, tNota, visto: performance.now() });
   }
   destellos.set(`${destino.tipo}:${destino.i}`, performance.now());
 
@@ -309,6 +437,7 @@ capa.addEventListener('pointerdown', (e) => {
   if (!encontrado?.destino) return;
   tocar(disp, 'raton', encontrado.destino, { tipo: 'golpe', tCruce: performance.now(), velocidad: 1.5, linea: { id: encontrado.linea } }, false);
 });
+for (const tipo of ['pointerup', 'pointercancel', 'pointerleave']) capa.addEventListener(tipo, () => soltar('raton'));
 
 function nombreNota(midi) {
   return `${NOMBRES[midi % 12]}${Math.floor(midi / 12) - 1}`;
@@ -439,6 +568,9 @@ function dibujar() {
     g.fillText(texto, x + an / 2, y + al - 6);
   });
 
+  // Theremín
+  if (disp.theremin) dibujarTheremin(disp.theremin, w, h, fuente);
+
   // Manos: puntos tenues y yemas activas destacadas
   for (const { puntos, yemas } of ultimasManos) {
     g.fillStyle = '#ffffff66';
@@ -449,7 +581,7 @@ function dibujar() {
     }
     for (const y of yemas) {
       const d = golpes.dedos.get(y.clave);
-      g.fillStyle = d?.pendiente ? '#f5b700' : d?.armado === false ? '#9a9aa2' : '#2bb8a2';
+      g.fillStyle = d?.pendiente ? '#f5b700' : mantenidas.has(y.clave) ? '#f08a4b' : golpes.desarmado(y.clave) ? '#9a9aa2' : '#2bb8a2';
       g.beginPath();
       g.arc(y.x * w, y.y * h, Math.max(6, h * 0.014), 0, Math.PI * 2);
       g.fill();
@@ -457,6 +589,71 @@ function dibujar() {
       g.lineWidth = 1.5;
       g.stroke();
     }
+  }
+}
+
+function dibujarTheremin(caja, w, h, fuente) {
+  const x = caja.x0 * w;
+  const y = caja.y0 * h;
+  const an = (caja.x1 - caja.x0) * w;
+  const al = (caja.y1 - caja.y0) * h;
+  const fondo = g.createLinearGradient(0, y, 0, y + al);
+  fondo.addColorStop(0, estadoTheremin ? '#c9a7ff66' : '#c9a7ff33');
+  fondo.addColorStop(1, '#c9a7ff08');
+  g.fillStyle = fondo;
+  g.fillRect(x, y, an, al);
+  g.strokeStyle = '#c9a7ffcc';
+  g.lineWidth = estadoTheremin ? 3 : 1.5;
+  g.strokeRect(x + 0.5, y + 0.5, an - 1, al - 1);
+
+  // Guías: notas de la escala (afinado) o cada Do (continuo)
+  const clases = new Set(ESCALAS[$('escala').value].map((m) => m % 12));
+  const afinado = $('afinarTheremin').checked;
+  g.font = `${Math.round(fuente * 0.7)}px system-ui`;
+  g.textBaseline = 'bottom';
+  for (let m = THEREMIN_GRAVE; m <= THEREMIN_GRAVE + 12 * THEREMIN_OCTAVAS; m++) {
+    if (afinado ? !clases.has(m % 12) : m % 12 !== 0) continue;
+    const gx = x + ((m - THEREMIN_GRAVE) / (12 * THEREMIN_OCTAVAS)) * an;
+    g.strokeStyle = m % 12 === 0 ? '#ffffff66' : '#ffffff26';
+    g.lineWidth = 1;
+    g.beginPath();
+    g.moveTo(gx, y);
+    g.lineTo(gx, y + al);
+    g.stroke();
+    if (m % 12 === 0) {
+      g.fillStyle = '#ffffffaa';
+      g.fillText(NOMBRES[0], gx, y + al - 3);
+    }
+  }
+  g.fillStyle = '#ffffffdd';
+  g.font = `bold ${fuente}px system-ui`;
+  g.textBaseline = 'top';
+  g.fillText('Theremín', x + an / 2, y + 4);
+  g.font = `${Math.round(fuente * 0.7)}px system-ui`;
+  g.fillText('← grave · agudo →   ↑ fuerte', x + an / 2, y + 6 + fuente);
+  g.textBaseline = 'bottom';
+
+  if (estadoTheremin) {
+    const px = estadoTheremin.x * w;
+    const py = estadoTheremin.y * h;
+    g.strokeStyle = '#ffffffaa';
+    g.setLineDash([4, 4]);
+    g.beginPath();
+    g.moveTo(px, y);
+    g.lineTo(px, y + al);
+    g.moveTo(x, py);
+    g.lineTo(x + an, py);
+    g.stroke();
+    g.setLineDash([]);
+    g.fillStyle = '#c9a7ff';
+    g.beginPath();
+    g.arc(px, py, Math.max(8, h * 0.02), 0, Math.PI * 2);
+    g.fill();
+    const midi = estadoTheremin.midi;
+    const nombre = Number.isInteger(midi) ? nombreNota(midi) : `${nombreNota(Math.round(midi))}${midi > Math.round(midi) ? '+' : '−'}`;
+    g.fillStyle = '#ffffff';
+    g.font = `bold ${Math.round(fuente * 1.2)}px system-ui`;
+    g.fillText(nombre, px, py - Math.max(10, h * 0.025));
   }
 }
 
@@ -515,15 +712,28 @@ const pagina = montarPagina({
     [
       `Ajustes: dedos ${$('dedos').value}, escala ${$('escala').value}, ritmo de notas ${$('ritmoNotas').value}, ` +
         `velocidad mínima ${golpes.velocidadMinima}, predicción ${golpes.prediccion ? `sí (${golpes.horizonteMs} ms)` : 'no'}`,
+      `Cruces que no sonaron: ${textoRecuentos()}`,
+      `Mantener notas: ${$('mantener').checked ? 'sí' : 'no'} · theremín: ${$('ladoTheremin').value}, ${$('controlTheremin').value}, ${$('afinarTheremin').checked ? 'afinado' : 'continuo'}`,
       cal.textoUltimo,
     ].join('\n'),
   habilitar: ['btnRitmo'],
   alCuadro: analizar,
   alListo: () => {
+    theremin = motor.crearTheremin();
+    setInterval(pintarRecuentos, 250);
     pagina.estado('Listo. Baja el dedo índice a través de la línea de color de una tecla, un pad o una pista.');
     requestAnimationFrame(bucleVisual);
   },
 });
+
+function pintarRecuentos() {
+  $('mRechazos').textContent = textoRecuentos();
+}
+
+function textoRecuentos() {
+  const r = golpes.rechazos;
+  return `${r.lento} lentos · ${r.sinRearmar} sin rearmar · ${r.fuera} entre botones · ${golpes.trasPerdida} sonaron tras perder la mano`;
+}
 
 function arrancarBateria() {
   sec.bpm = Number($('bpm').value) || 100;
@@ -551,6 +761,13 @@ function actualizarBotonRitmo() {
 
 $('volBateria').addEventListener('input', (e) => {
   if (motor.busBateria) motor.busBateria.gain.value = Number(e.target.value);
+});
+
+$('btnReiniciar').addEventListener('click', () => golpes.reiniciarRecuentos());
+
+$('ladoTheremin').addEventListener('change', () => {
+  theremin?.callar();
+  estadoTheremin = null;
 });
 
 $('velMin').addEventListener('input', (e) => {

@@ -67,10 +67,12 @@ export class Looper {
 
   /**
    * Graba un evento tocado en directo. tIntencion: reloj de audio en que el
-   * músico quiso tocarlo (ya compensado).
+   * músico quiso tocarlo (ya compensado). Devuelve los eventos guardados;
+   * a una nota mantenida se le añade después `dur` (en pulsos) al soltarla.
    */
   grabar(evento, tIntencion) {
     const b = this.pulsoEn(tIntencion);
+    const guardados = []; // para poder añadirles la duración al soltar
     for (const p of this.pistas) {
       if (p.estado !== 'cuenta' && p.estado !== 'grabando') continue;
       const largo = p.compases * PULSOS_POR_COMPAS;
@@ -79,8 +81,11 @@ export class Looper {
       let pos = b - p.inicio;
       if (this.cuantizar) pos = Math.round(pos * 4) / 4;
       pos = ((pos % largo) + largo) % largo;
-      p.eventos.push({ ...evento, pos });
+      const guardado = { ...evento, pos };
+      p.eventos.push(guardado);
+      guardados.push(guardado);
     }
+    return guardados;
   }
 
   /** Avanza los estados según el reloj (llamar a menudo). */

@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Air Looper · Teclado virtual</title>
+  <title>Air Looper · Teclado y theremín</title>
   <link rel="stylesheet" href="estilos.css">
 </head>
 <body>
   <header>
-    <h1>Air Looper <span>teclado virtual y loops</span></h1>
+    <h1>Air Looper <span>teclado, theremín y loops</span></h1>
     <nav><a href="index.html">← Prueba de la pinza</a></nav>
     <button id="btnIniciar" class="primario">Iniciar cámara y audio</button>
     <span id="estado" class="estado">Pulsa «Iniciar». Se pedirá permiso para la cámara.</span>
@@ -28,7 +28,10 @@
           <legend>Cómo se toca</legend>
           <ul class="instrucciones">
             <li>Baja el dedo <strong>a través de la línea de color</strong> que hay bajo cada tecla, pad o pista.</li>
-            <li>Un golpe por bajada: para repetir, sube el dedo por encima de la línea.</li>
+            <li>Un golpe por bajada: para repetir, sube el dedo por encima de la línea.
+              Con «Mantener», la tecla suena hasta que el dedo vuelve a subir.</li>
+            <li><strong>Theremín:</strong> mete la mano en el recuadro morado. De izquierda a
+              derecha cambia la nota; de abajo arriba, la intensidad. Al sacarla, se calla.</li>
             <li><strong>Pistas:</strong> golpe en una vacía → cuenta → graba lo que toques → queda en bucle.
               Golpe en una que suena → se silencia en el próximo compás (y otro golpe la reactiva).
               «Borrar» y luego una pista → la vacía.</li>
@@ -73,13 +76,32 @@
               <option value="todos">Todos menos el pulgar</option>
             </select>
           </label>
-          <label>Altura del teclado <input id="posicion" type="range" min="0.7" max="0.95" step="0.01" value="0.8"></label>
+          <label>Altura del teclado <input id="posicion" type="range" min="0.75" max="0.95" step="0.01" value="0.85"></label>
           <label><input id="dinamica" type="checkbox" checked> Más fuerte cuanto más rápido</label>
+          <label><input id="mantener" type="checkbox" checked> Mantener la nota hasta que el dedo suba</label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Theremín</legend>
+          <label>Recuadro
+            <select id="ladoTheremin">
+              <option value="derecha" selected>A la derecha de los pads</option>
+              <option value="izquierda">A la izquierda de los pads</option>
+              <option value="no">Sin theremín</option>
+            </select>
+          </label>
+          <label>Lo controla
+            <select id="controlTheremin">
+              <option value="palma" selected>La mano entera (centro de la palma)</option>
+              <option value="corazon">La yema del dedo corazón</option>
+            </select>
+          </label>
+          <label><input id="afinarTheremin" type="checkbox"> Afinar a las notas de la escala</label>
         </fieldset>
 
         <fieldset>
           <legend>Disparo</legend>
-          <label>Velocidad mínima <input id="velMin" type="range" min="0.2" max="2" step="0.05" value="0.6"> <output id="velMinTxt">0.60</output></label>
+          <label>Velocidad mínima <input id="velMin" type="range" min="0.05" max="1.5" step="0.05" value="0.3"> <output id="velMinTxt">0.30</output></label>
           <label>Ritmo de las notas
             <select id="ritmoNotas">
               <option value="libre" selected>Libre (al instante)</option>
@@ -148,7 +170,11 @@
         <dt>Lo que se grabaría (compensado)</dt><dd id="mGrabado">—</dd>
         <dt>Predicción</dt><dd id="mPrediccion">—</dd>
         <dt>Latencia fija</dt><dd id="mTarde">—</dd>
+        <dt>Cruces que no sonaron</dt><dd id="mRechazos">—</dd>
       </dl>
+      <p class="ayuda">«Lentos»: el dedo cruzó por debajo de la velocidad mínima (bájala).
+        «Sin rearmar»: no subió lo bastante desde el golpe anterior. «Tras perder la mano»:
+        MediaPipe dejó de ver la mano un momento (suele ser por movimiento rápido o poca luz).</p>
       <div class="botones">
         <button id="btnReiniciar" disabled>Reiniciar medidas</button>
         <button id="btnCsv" disabled>Descargar CSV</button>

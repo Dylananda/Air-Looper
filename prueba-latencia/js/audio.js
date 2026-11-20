@@ -167,11 +167,21 @@ export class MotorAudio {
   // Voces para tocar.
   // ---------------------------------------------------------------------
 
-  /** Ataque inmediato (~1 ms) y caída rápida, tipo marimba. */
-  notaPercusiva(t, frecuencia, vel = 1) {
+  /**
+   * Ataque inmediato (~1 ms) y caída rápida, tipo marimba. Con `sostener`,
+   * cae a un nivel de sostenido y suena hasta que se llama a .soltar(t) en la
+   * función devuelta (con un tope de seguridad de 8 s).
+   */
+  notaPercusiva(t, frecuencia, vel = 1, sostener = false) {
     const c = this.ctx;
     const g = c.createGain();
-    envolventePercusiva(g.gain, t, 0.9 * vel, 0.35, 0.001);
+    if (sostener) {
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.9 * vel, t + 0.001);
+      g.gain.setTargetAtTime(0.28 * vel, t + 0.002, 0.12);
+    } else {
+      envolventePercusiva(g.gain, t, 0.9 * vel, 0.35, 0.001);
+    }
     const fund = c.createOscillator();
     fund.frequency.value = frecuencia;
     const arm = c.createOscillator();
@@ -184,13 +194,13 @@ export class MotorAudio {
     g.connect(this.busNotas);
     for (const o of [fund, arm]) {
       o.start(t);
-      o.stop(t + 0.4);
+      o.stop(t + (sostener ? 8 : 0.4));
     }
-    return () => this._cancelar(t, g, [fund, arm]);
+    return this._manejador(t, g, [fund, arm], sostener, 0.08);
   }
 
   /** Ataque lento (~80 ms) y cola larga, tipo pad: disimula la latencia. */
-  notaSuave(t, frecuencia, vel = 1) {
+  notaSuave(t, frecuencia, vel = 1, sostener = false) {
     const c = this.ctx;
     const filtro = c.createBiquadFilter();
     filtro.type = 'lowpass';
@@ -199,7 +209,8 @@ export class MotorAudio {
     const g = c.createGain();
     g.gain.setValueAtTime(0, t);
     g.gain.linearRampToValueAtTime(0.35 * vel, t + 0.08);
-    g.gain.setTargetAtTime(0, t + 0.25, 0.2);
+    if (!sostener) g.gain.setTargetAtTime(0, t + 0.25, 0.2);
+    else g.gain.setTargetAtTime(0.25 * vel, t + 0.08, 0.3);
     const oscs = [-7, 7].map((desafinado) => {
       const o = c.createOscillator();
       o.type = 'sawtooth';
@@ -207,11 +218,85 @@ export class MotorAudio {
       o.detune.value = desafinado;
       o.connect(filtro);
       o.start(t);
-      o.stop(t + 1.4);
+      o.stop(t + (sostener ? 8 : 1.4));
       return o;
     });
     filtro.connect(g).connect(this.busNotas);
-    return () => this._cancelar(t, g, oscs);
+    return this._manejador(t, g, oscs, sostener, 0.15);
+  }
+
+  /**
+   * Devuelve la función de cancelar, con un método .soltar(t) que apaga la
+   * nota con una caída de `caida` segundos (sólo hace algo si se sostiene).
+   */
+  _manejador(t, ganancia, fuentes, sostener, caida) {
+    const cancelar = () => this._cancelar(t, ganancia, fuentes);
+    cancelar.soltar = (tSoltar = this.ctx.currentTime) => {
+      if (!sostener) return;
+      const ts = Math.max(tSoltar, t + 0.01, this.ctx.currentTime);
+      ganancia.gain.cancelScheduledValues(ts);
+      ganancia.gain.setTargetAtTime(0, ts, caida / 3);
+      for (const f of fuentes) {
+        try {
+          f.stop(ts + caida * 2);
+        } catch {
+          /* ya parado */
+        }
+      }
+    };
+    return cancelar;
+  }
+
+  /**
+   * Voz continua del theremín. Devuelve { fijar(frecuencia, volumen), callar() }.
+   * Los cambios se suavizan unos 20–30 ms para que el temblor del detector no
+   * se oiga como saltos.
+   */
+  crearTheremin() {
+    const c = this.ctx;
+    const salida = c.createGain();
+    salida.gain.value = 0;
+    const filtro = c.createBiquadFilter();
+    filtro.type = 'lowpass';
+    filtro.frequency.value = 2500;
+    const osc = c.createOscillator();
+    osc.type = 'triangle';
+    const sub = c.createOscillator();
+    sub.type = 'sine';
+    const gSub = c.createGain();
+    gSub.gain.value = 0.5;
+    // Vibrato suave, como un theremín de verdad
+    const lfo = c.createOscillator();
+    lfo.frequency.value = 5.5;
+    const gLfo = c.createGain();
+    gLfo.gain.value = 6; // cents
+    lfo.connect(gLfo);
+    gLfo.connect(osc.detune);
+    gLfo.connect(sub.detune);
+    osc.connect(filtro);
+    sub.connect(gSub).connect(filtro);
+    filtro.connect(salida).connect(this.busNotas);
+    for (const o of [osc, sub, lfo]) o.start();
+    let frecuenciaActual = 0;
+    return {
+      fijar: (frecuencia, volumen) => {
+        const ahora = c.currentTime;
+        if (!frecuenciaActual) {
+          // Al entrar: la nota empieza ya en su sitio, sin deslizarse desde otra.
+          osc.frequency.setValueAtTime(frecuencia, ahora);
+          sub.frequency.setValueAtTime(frecuencia / 2, ahora);
+        } else {
+          osc.frequency.setTargetAtTime(frecuencia, ahora, 0.02);
+          sub.frequency.setTargetAtTime(frecuencia / 2, ahora, 0.02);
+        }
+        frecuenciaActual = frecuencia;
+        salida.gain.setTargetAtTime(volumen * 0.5, ahora, 0.03);
+      },
+      callar: () => {
+        frecuenciaActual = 0;
+        salida.gain.setTargetAtTime(0, c.currentTime, 0.05);
+      },
+    };
   }
 
   _cancelar(t, ganancia, fuentes) {
