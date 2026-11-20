@@ -20,6 +20,12 @@ para pegarlas en el chat.
 
 ### Arrancarla
 
+**En Windows:** doble clic en `iniciar.bat`. Abre el servidor y la página en el
+navegador. Deja abierta la ventana negra mientras pruebas: si la cierras, el
+servidor se apaga y el navegador dirá que «localhost ha rechazado la conexión».
+
+**A mano:**
+
 La cámara solo funciona en `https` o en `localhost`, así que hay que servir la
 carpeta con cualquier servidor local. Con Python:
 
