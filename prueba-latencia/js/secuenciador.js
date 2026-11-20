@@ -21,6 +21,10 @@ export class Secuenciador {
     this.sonando = false;
     this.t0 = 0;
     this.paso = 0;
+    // Gancho opcional: alProgramar(desde, hasta) se llama en cada vuelta con
+    // la ventana de tiempo (reloj de audio) que toca programar. Lo usa el looper.
+    this.alProgramar = null;
+    this.programadoHasta = 0;
   }
 
   /** Duración de un pulso (negra) en segundos. */
@@ -33,6 +37,7 @@ export class Secuenciador {
     this.modo = modo;
     this.t0 = this.motor.ahora + 0.15;
     this.paso = 0;
+    this.programadoHasta = this.t0;
     this.sonando = true;
     this._programar();
     this.temporizador = setInterval(() => this._programar(), PERIODO_MS);
@@ -65,6 +70,21 @@ export class Secuenciador {
       this._sonarPaso(this.paso, this.tiempoPaso(this.paso));
       this.paso++;
     }
+    if (this.alProgramar && limite > this.programadoHasta) {
+      this.alProgramar(this.programadoHasta, limite);
+      this.programadoHasta = limite;
+    }
+  }
+
+  /** Duración de un compás (4 pulsos) en segundos. */
+  get segCompas() {
+    return this.segPulso * 4;
+  }
+
+  /** Primer inicio de compás en o después de t. */
+  siguienteCompas(t) {
+    const n = Math.ceil((t - this.t0) / this.segCompas - 1e-6);
+    return this.t0 + n * this.segCompas;
   }
 
   _sonarPaso(paso, t) {

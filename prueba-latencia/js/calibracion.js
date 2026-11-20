@@ -1,5 +1,5 @@
-// Calibración: el usuario hace la pinza al ritmo de un metrónomo y se mide
-// cuánto después del clic programado llega cada pinza al motor de audio.
+// Calibración: el usuario hace el gesto (pinza o golpe) al ritmo de un metrónomo y se mide
+// cuánto después del clic programado llega cada gesto al motor de audio.
 //
 // Ese desfase incluye todo: salida de audio (el clic tarda en oírse), reacción
 // y precisión humana, cámara y detección. Es justo lo que hay que restar a
@@ -21,11 +21,13 @@ export class Calibracion {
     this.pulsoInicio = 4;
     this.pulsoFin = 4 + compases * 4;
     this.golpes = [];
+    this.lejos = 0; // gestos detectados demasiado lejos de un clic
+    this.dobles = 0; // segundo gesto para el mismo clic
     this.activa = true;
   }
 
   /**
-   * Registra una pinza. tNota: instante (reloj de audio) en que sonaría la
+   * Registra un gesto. tNota: instante (reloj de audio) en que sonaría la
    * nota; tCamara: instante audible en que la cámara captó el cuadro (o null).
    */
   registrar(tNota, tCamara) {
@@ -33,8 +35,14 @@ export class Calibracion {
     const { n, error } = this.sec.rejillaMasCercana(tNota, 1);
     if (n < this.pulsoInicio || n >= this.pulsoFin) return null;
     // Más de casi medio pulso de error: no se sabe a qué clic iba.
-    if (Math.abs(error) > this.sec.segPulso * 0.45) return null;
-    if (this.golpes.some((g) => g.pulso === n)) return null; // doble pinza
+    if (Math.abs(error) > this.sec.segPulso * 0.45) {
+      this.lejos++;
+      return null;
+    }
+    if (this.golpes.some((g) => g.pulso === n)) {
+      this.dobles++;
+      return null;
+    }
     const golpe = {
       pulso: n,
       desfaseMs: error * 1000,
@@ -58,13 +66,14 @@ export class Calibracion {
     this.sec.parar();
     const todos = this.golpes.map((g) => g.desfaseMs);
     const esperados = this.pulsoFin - this.pulsoInicio;
-    if (todos.length === 0) return { esperados, validos: [], descartados: 0, resumen: resumir([]) };
+    const extra = { esperados, lejos: this.lejos, dobles: this.dobles };
+    if (todos.length === 0) return { ...extra, validos: [], descartados: 0, resumen: resumir([]), camara: resumir([]) };
     const { mediana, mad } = medianaYMad(todos);
     // Atípico: más de 3 MAD (mínimo 25 ms) de la mediana.
     const limite = Math.max(3 * 1.4826 * mad, 25);
     const validos = this.golpes.filter((g) => Math.abs(g.desfaseMs - mediana) <= limite);
     return {
-      esperados,
+      ...extra,
       validos,
       descartados: this.golpes.length - validos.length,
       resumen: resumir(validos.map((g) => g.desfaseMs)),

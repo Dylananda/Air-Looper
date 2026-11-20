@@ -1,6 +1,9 @@
 // Motor de audio: contexto Web Audio, sonidos sintetizados (batería, metrónomo y
-// las dos voces de prueba) y conversión entre el reloj del navegador
-// (performance.now) y el reloj de audio.
+// voces) y conversión entre el reloj del navegador (performance.now) y el
+// reloj de audio.
+//
+// Todos los sonidos devuelven una función que los cancela si aún no han
+// empezado a sonar (la usa la predicción cuando se equivoca).
 
 export class MotorAudio {
   async iniciar() {
@@ -28,7 +31,7 @@ export class MotorAudio {
     this.busNotas.gain.value = 0.8;
     this.busNotas.connect(this.maestro);
 
-    // Un segundo de ruido blanco reutilizable para caja, charles, etc.
+    // Un segundo de ruido blanco reutilizable para caja, charles, palmas.
     const largo = ctx.sampleRate;
     this.ruido = ctx.createBuffer(1, largo, ctx.sampleRate);
     const datos = this.ruido.getChannelData(0);
@@ -74,34 +77,31 @@ export class MotorAudio {
   }
 
   // ---------------------------------------------------------------------
-  // Batería
+  // Batería. `destino` permite mandar los golpes de los pads al bus de notas.
   // ---------------------------------------------------------------------
 
-  bombo(t, vel = 1) {
+  bombo(t, vel = 1, destino = this.busBateria) {
     const c = this.ctx;
     const osc = c.createOscillator();
     const g = c.createGain();
     osc.frequency.setValueAtTime(150, t);
     osc.frequency.exponentialRampToValueAtTime(45, t + 0.12);
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(vel, t + 0.002);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
-    osc.connect(g).connect(this.busBateria);
+    envolventePercusiva(g.gain, t, vel, 0.4);
+    osc.connect(g).connect(destino);
     osc.start(t);
     osc.stop(t + 0.45);
+    return () => this._cancelar(t, g, [osc]);
   }
 
-  caja(t, vel = 1) {
+  caja(t, vel = 1, destino = this.busBateria) {
     const c = this.ctx;
     const ruido = this._fuenteRuido();
     const filtro = c.createBiquadFilter();
     filtro.type = 'highpass';
     filtro.frequency.value = 1200;
     const g = c.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.5 * vel, t + 0.002);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
-    ruido.connect(filtro).connect(g).connect(this.busBateria);
+    envolventePercusiva(g.gain, t, 0.5 * vel, 0.18);
+    ruido.connect(filtro).connect(g).connect(destino);
     ruido.start(t);
     ruido.stop(t + 0.2);
 
@@ -109,27 +109,47 @@ export class MotorAudio {
     tono.type = 'triangle';
     tono.frequency.value = 190;
     const gt = c.createGain();
-    gt.gain.setValueAtTime(0.0001, t);
-    gt.gain.exponentialRampToValueAtTime(0.4 * vel, t + 0.002);
-    gt.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
-    tono.connect(gt).connect(this.busBateria);
+    envolventePercusiva(gt.gain, t, 0.4 * vel, 0.1);
+    tono.connect(gt).connect(destino);
     tono.start(t);
     tono.stop(t + 0.12);
+    return () => this._cancelar(t, g, [ruido]) && this._cancelar(t, gt, [tono]);
   }
 
-  charles(t, vel = 1) {
+  charles(t, vel = 1, destino = this.busBateria) {
     const c = this.ctx;
     const ruido = this._fuenteRuido();
     const filtro = c.createBiquadFilter();
     filtro.type = 'highpass';
     filtro.frequency.value = 7000;
     const g = c.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.25 * vel, t + 0.001);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
-    ruido.connect(filtro).connect(g).connect(this.busBateria);
+    envolventePercusiva(g.gain, t, 0.25 * vel, 0.05);
+    ruido.connect(filtro).connect(g).connect(destino);
     ruido.start(t);
     ruido.stop(t + 0.06);
+    return () => this._cancelar(t, g, [ruido]);
+  }
+
+  palmas(t, vel = 1, destino = this.busBateria) {
+    const c = this.ctx;
+    const ruido = this._fuenteRuido();
+    const filtro = c.createBiquadFilter();
+    filtro.type = 'bandpass';
+    filtro.frequency.value = 1300;
+    filtro.Q.value = 1.2;
+    const g = c.createGain();
+    // Tres chasquidos muy seguidos y una cola corta: suena a palmada.
+    g.gain.setValueAtTime(0, t);
+    for (const d of [0, 0.011, 0.022]) {
+      g.gain.setValueAtTime(0.7 * vel, t + d);
+      g.gain.exponentialRampToValueAtTime(0.05, t + d + 0.009);
+    }
+    g.gain.setValueAtTime(0.5 * vel, t + 0.033);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+    ruido.connect(filtro).connect(g).connect(destino);
+    ruido.start(t);
+    ruido.stop(t + 0.22);
+    return () => this._cancelar(t, g, [ruido]);
   }
 
   clic(t, acento = false) {
@@ -137,26 +157,21 @@ export class MotorAudio {
     const osc = c.createOscillator();
     osc.frequency.value = acento ? 2000 : 1400;
     const g = c.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(acento ? 0.9 : 0.6, t + 0.001);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.035);
+    envolventePercusiva(g.gain, t, acento ? 0.9 : 0.6, 0.035, 0.001);
     osc.connect(g).connect(this.busBateria);
     osc.start(t);
     osc.stop(t + 0.05);
   }
 
   // ---------------------------------------------------------------------
-  // Voces de prueba para la pinza. Devuelven una función para cancelar la
-  // nota si aún no ha empezado (la usa la predicción cuando se equivoca).
+  // Voces para tocar.
   // ---------------------------------------------------------------------
 
   /** Ataque inmediato (~1 ms) y caída rápida, tipo marimba. */
-  notaPercusiva(t, frecuencia) {
+  notaPercusiva(t, frecuencia, vel = 1) {
     const c = this.ctx;
     const g = c.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.9, t + 0.001);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+    envolventePercusiva(g.gain, t, 0.9 * vel, 0.35, 0.001);
     const fund = c.createOscillator();
     fund.frequency.value = frecuencia;
     const arm = c.createOscillator();
@@ -175,7 +190,7 @@ export class MotorAudio {
   }
 
   /** Ataque lento (~80 ms) y cola larga, tipo pad: disimula la latencia. */
-  notaSuave(t, frecuencia) {
+  notaSuave(t, frecuencia, vel = 1) {
     const c = this.ctx;
     const filtro = c.createBiquadFilter();
     filtro.type = 'lowpass';
@@ -183,7 +198,7 @@ export class MotorAudio {
     filtro.Q.value = 0.5;
     const g = c.createGain();
     g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(0.35, t + 0.08);
+    g.gain.linearRampToValueAtTime(0.35 * vel, t + 0.08);
     g.gain.setTargetAtTime(0, t + 0.25, 0.2);
     const oscs = [-7, 7].map((desafinado) => {
       const o = c.createOscillator();
@@ -218,6 +233,13 @@ export class MotorAudio {
     f.buffer = this.ruido;
     return f;
   }
+}
+
+/** Envolvente de ataque casi instantáneo y caída exponencial. */
+function envolventePercusiva(param, t, pico, caida, ataque = 0.002) {
+  param.setValueAtTime(0.0001, t);
+  param.exponentialRampToValueAtTime(Math.max(pico, 0.0002), t + ataque);
+  param.exponentialRampToValueAtTime(0.0001, t + caida);
 }
 
 /** Frecuencia en Hz de una nota MIDI. */

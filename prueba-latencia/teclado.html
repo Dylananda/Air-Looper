@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Air Looper · Teclado virtual</title>
+  <link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+  <header>
+    <h1>Air Looper <span>teclado virtual y loops</span></h1>
+    <nav><a href="index.html">← Prueba de la pinza</a></nav>
+    <button id="btnIniciar" class="primario">Iniciar cámara y audio</button>
+    <span id="estado" class="estado">Pulsa «Iniciar». Se pedirá permiso para la cámara.</span>
+  </header>
+
+  <main>
+    <section class="escena">
+      <div class="lienzo-video">
+        <video id="video" playsinline muted></video>
+        <canvas id="capa" class="sin-espejo"></canvas>
+        <div id="pulso" class="pulso"></div>
+        <div id="aviso" class="aviso" hidden></div>
+      </div>
+
+      <div class="controles">
+        <fieldset>
+          <legend>Cómo se toca</legend>
+          <ul class="instrucciones">
+            <li>Baja el dedo <strong>a través de la línea de color</strong> que hay bajo cada tecla, pad o pista.</li>
+            <li>Un golpe por bajada: para repetir, sube el dedo por encima de la línea.</li>
+            <li><strong>Pistas:</strong> golpe en una vacía → cuenta → graba lo que toques → queda en bucle.
+              Golpe en una que suena → se silencia en el próximo compás (y otro golpe la reactiva).
+              «Borrar» y luego una pista → la vacía.</li>
+            <li>También puedes hacer clic con el ratón para probar.</li>
+          </ul>
+        </fieldset>
+
+        <fieldset>
+          <legend>Ritmo y loops</legend>
+          <label>BPM <input id="bpm" type="number" min="50" max="200" value="100"></label>
+          <button id="btnRitmo" disabled>▶ Batería</button>
+          <label>Volumen batería <input id="volBateria" type="range" min="0" max="1" step="0.05" value="0.6"></label>
+          <label>Compases por pista
+            <select id="compases">
+              <option value="1" selected>1</option>
+              <option value="2">2</option>
+              <option value="4">4</option>
+            </select>
+          </label>
+          <label><input id="cuantizarGrabacion" type="checkbox" checked> Cuantizar la grabación a semicorcheas</label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Teclado</legend>
+          <label>Notas
+            <select id="escala">
+              <option value="mayor2" selected>Do mayor · 2 octavas (15 teclas)</option>
+              <option value="penta2">La menor pentatónica · 2 octavas (11)</option>
+              <option value="mayor1">Do mayor · 1 octava (8, teclas anchas)</option>
+            </select>
+          </label>
+          <label>Sonido
+            <select id="voz">
+              <option value="percusivo" selected>Percusivo</option>
+              <option value="suave">Ataque suave</option>
+            </select>
+          </label>
+          <label>Dedos que tocan
+            <select id="dedos">
+              <option value="indice" selected>Sólo los índices</option>
+              <option value="indice-medio">Índices y medios</option>
+              <option value="todos">Todos menos el pulgar</option>
+            </select>
+          </label>
+          <label>Altura del teclado <input id="posicion" type="range" min="0.7" max="0.95" step="0.01" value="0.8"></label>
+          <label><input id="dinamica" type="checkbox" checked> Más fuerte cuanto más rápido</label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Disparo</legend>
+          <label>Velocidad mínima <input id="velMin" type="range" min="0.2" max="2" step="0.05" value="0.6"> <output id="velMinTxt">0.60</output></label>
+          <label>Ritmo de las notas
+            <select id="ritmoNotas">
+              <option value="libre" selected>Libre (al instante)</option>
+              <option value="siguiente-16">A la siguiente semicorchea</option>
+              <option value="siguiente-8">A la siguiente corchea</option>
+              <option value="repetir-16">Repetir semicorcheas mientras mantienes</option>
+              <option value="repetir-8">Repetir corcheas mientras mantienes</option>
+            </select>
+          </label>
+          <label><input id="prediccion" type="checkbox"> Predicción por trayectoria</label>
+          <label>Anticipación <input id="horizonte" type="range" min="0" max="80" step="1" value="33"> <output id="horizonteTxt">33 ms</output></label>
+          <label><input id="latFija" type="checkbox"> Latencia fija desde el golpe</label>
+          <label>Objetivo <input id="latFijaMs" type="range" min="30" max="250" step="1" value="110"> <output id="latFijaTxt">110 ms</output></label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Cámara</legend>
+          <label>Resolución
+            <select id="resolucion">
+              <option value="640x480" selected>640×480</option>
+              <option value="1280x720">1280×720</option>
+              <option value="320x240">320×240</option>
+            </select>
+          </label>
+          <label>FPS pedidos
+            <select id="fpsPedidos">
+              <option value="60" selected>60</option>
+              <option value="30">30</option>
+            </select>
+          </label>
+          <label>Detector
+            <select id="delegado">
+              <option value="GPU" selected>GPU</option>
+              <option value="CPU">CPU</option>
+            </select>
+          </label>
+          <div id="cajaExposicion" hidden>
+            <label><input id="expManual" type="checkbox"> Exposición manual</label>
+            <label>Tiempo <input id="exposicion" type="range"> <output id="exposicionTxt">auto</output></label>
+          </div>
+          <p id="exposicionNo" class="nota" hidden>Esta cámara no deja fijar la exposición desde el navegador.</p>
+          <button id="btnCamara" disabled>Aplicar</button>
+        </fieldset>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Medidas en directo</h2>
+      <dl class="metricas">
+        <dt>Cámara</dt><dd id="mCamara">—</dd>
+        <dt>Intervalo entre cuadros</dt><dd id="mIntervalo">—</dd>
+        <dt>Cuadros procesados</dt><dd id="mProcesados">—</dd>
+        <dt>Detección de la mano</dt><dd id="mDeteccion">—</dd>
+        <dt>Captura → resultado</dt><dd id="mEdad">—</dd>
+        <dt>Salida de audio</dt><dd id="mSalida">—</dd>
+        <dt class="destacado">Latencia total estimada</dt><dd id="mTotal" class="destacado">—</dd>
+      </dl>
+      <canvas id="grafica" class="grafica" width="600" height="160"></canvas>
+      <p class="leyenda"><span class="c1">■</span> total estimada por cuadro · <span class="c2">■</span> detección · línea discontinua = media</p>
+
+      <h3>Golpes</h3>
+      <dl class="metricas">
+        <dt>Notas</dt><dd id="mNotas">0</dd>
+        <dt>Golpe → altavoz</dt><dd id="mNotaLat">—</dd>
+        <dt>Lo que oyes: nota vs. corchea</dt><dd id="mRejilla">—</dd>
+        <dt>Lo que se grabaría (compensado)</dt><dd id="mGrabado">—</dd>
+        <dt>Predicción</dt><dd id="mPrediccion">—</dd>
+        <dt>Latencia fija</dt><dd id="mTarde">—</dd>
+      </dl>
+      <div class="botones">
+        <button id="btnReiniciar" disabled>Reiniciar medidas</button>
+        <button id="btnCsv" disabled>Descargar CSV</button>
+        <button id="btnCopiar" disabled>Copiar resumen</button>
+      </div>
+
+      <h2>Calibración</h2>
+      <p class="ayuda">Suena un metrónomo: escucha un compás de cuenta y luego da un golpe
+        sobre cualquier tecla en cada clic. El retraso medio es lo que se resta al grabar
+        las pistas, para que queden en su sitio.</p>
+      <div class="fila">
+        <label>BPM <input id="calBpm" type="number" min="50" max="160" value="90"></label>
+        <label>Compases <input id="calCompases" type="number" min="2" max="16" value="4"></label>
+        <label><input id="calOir" type="checkbox"> Oír el golpe</label>
+        <button id="btnCalibrar" class="primario" disabled>Empezar calibración</button>
+      </div>
+      <div id="calProgreso" class="cal-progreso"></div>
+      <canvas id="calGrafica" class="grafica" width="600" height="90" hidden></canvas>
+      <div id="calResultado" class="cal-resultado"></div>
+      <p class="compensacion">Compensación aplicada: <strong id="compActual">0 ms</strong>
+        <button id="btnAplicarComp" disabled>Usar el resultado</button></p>
+    </section>
+  </main>
+
+  <script type="module" src="js/teclado.js"></script>
+</body>
+</html>

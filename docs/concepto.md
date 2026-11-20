@@ -101,6 +101,59 @@ Grabar con el móvil en cámara lenta (240 fps) la mano haciendo la pinza junto
 al altavoz: contar los fotogramas entre el contacto de los dedos y el inicio
 del sonido en la pista de audio del vídeo.
 
+## Segunda versión: teclado virtual y loops sobre la imagen
+
+En `prueba-latencia/teclado.html`.
+
+- **Sin papel: los botones se dibujan sobre la imagen de la cámara.** Uno ve
+  a la vez sus manos y los botones, y puede dirigirlas a ellos.
+- **Gesto «golpe»**: la yema del dedo baja y atraviesa una línea horizontal
+  (el borde inferior de la tecla, el más cercano a quien toca). Es más rápido
+  que la pinza y, al ser un movimiento rápido y recto, se puede predecir. El
+  instante del golpe se interpola entre dos cuadros, así no depende de cuándo
+  cayó el cuadro.
+- Un golpe por bajada: el dedo se rearma al volver a subir. Así, si baja
+  desde un pad hasta el teclado, no suena dos veces.
+- Disposición, de arriba abajo: **botones de pista** (4 + «Borrar»), **pads de
+  percusión** (bombo, caja, charles, palmas) y **teclado de 2 octavas**.
+- Sólo teclas de la escala (sin teclas negras): con las negras encima, un dedo
+  que baja cruzaría dos líneas. Además encaja con «escala bloqueada a la del
+  loop».
+- Fuerza según la velocidad del golpe.
+- **Ritmo de las notas** (la mano elige y el reloj dispara): libre, a la
+  siguiente semicorchea o corchea, o repetir mientras el dedo se mantiene
+  bajo la línea.
+- **Loops**: golpe en pista vacía → cuenta (≥ 3,5 pulsos hasta el siguiente
+  compás) → graba 1, 2 o 4 compases → bucle. Golpe en una pista que suena →
+  se silencia en el compás siguiente; otro golpe → vuelve. «Borrar» + pista →
+  la vacía. Las notas se graban con la compensación de la calibración y
+  cuantizadas a semicorcheas (opcional). Las posiciones se guardan en pulsos,
+  así un cambio de tempo no las descoloca.
+
+## Medidas reales (primer equipo, webcam del portátil)
+
+- Calibración con pinza: sistema (captura → altavoz) 83–86 ms en dos
+  pruebas: **muy constante**. La dispersión de la segunda (± 42 ms) venía del
+  gesto, no de la máquina.
+- La cámara daba **15 fps reales** (declara 30): intervalos de 67 ms. Casi
+  seguro es por poca luz (la exposición automática alarga cada fotograma).
+  Esto añade ~35 ms de media y bastante variación.
+- Salida de audio ≈ 50 ms; detección ≈ 10 ms; captura → resultado ≈ 21 ms;
+  latencia total estimada ≈ 107 ms (sin contar el retraso interno de la cámara).
+- Conclusión provisional: lo primero es la cámara (luz, exposición manual,
+  60 fps). Después, la salida de audio.
+
+## ¿Móvil o PC?
+
+- La cámara de un móvil suele dar 30–60 fps reales, incluso con poca luz.
+- Pero la detección corre más lenta en el móvil, y la salida de audio en
+  Android suele ser peor que en el PC. En iPhone suele ir bien.
+- Para usar la cámara desde el móvil, la página tiene que estar en https
+  (por ejemplo, publicada con GitHub Pages).
+- Prueba intermedia: **usar el móvil como webcam del PC** (Enlace Móvil de
+  Windows, Camo, DroidCam, Continuity Camera en Mac…). Se tiene la buena
+  cámara y el audio del PC, y se ve qué parte del problema era la cámara.
+
 ## Registro de decisiones
 
 - **2026-11-20** — Se empieza por una prueba de latencia en web (HTML + JS,
@@ -114,6 +167,14 @@ del sonido en la pista de audio del vídeo.
   de audio para que la detección, que bloquea el hilo principal, no afecte al
   ritmo.
 
+- **2026-11-20** — Botones virtuales sobre la imagen de la cámara, en vez de
+  papel. Gesto principal para tocar: «golpe» (bajada del dedo a través de una
+  línea).
+- **2026-11-20** — Teclado de la escala (sin teclas negras), 2 octavas; pads de
+  percusión y botones de pista encima.
+- **2026-11-20** — Los loops se graban en pulsos, compensados y cuantizados;
+  lanzar y silenciar pistas, siempre al compás.
+
 ## Pendiente de decidir
 
 - Resultado de la prueba: ¿es tocable? ¿A qué fps / resolución? ¿Con qué
@@ -123,3 +184,5 @@ del sonido en la pista de audio del vídeo.
 - ¿Latencia fija o "lo antes posible"?
 - Tecnología del programa final (web/PWA, Electron, nativo…).
 - Mapa de gestos y modos (qué mano toca, qué mano manda).
+- ¿Móvil, móvil como webcam o PC? Depende de las medidas con mejor cámara.
+- ¿Teclas negras o cambio de escala con un botón?
