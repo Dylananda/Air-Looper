@@ -1,0 +1,193 @@
+:root {
+  --fondo: #f6f5f2;
+  --superficie: #ffffff;
+  --texto: #1d1d1f;
+  --suave: #6b6b70;
+  --borde: #dddcd7;
+  --acento: #0a7d6c;
+  --acento-texto: #ffffff;
+  --serie1: #0a7d6c;
+  --serie2: #c2571a;
+  --aviso: #b3261e;
+  --pinza: #f5b700;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fondo: #141416;
+    --superficie: #1e1e21;
+    --texto: #ececee;
+    --suave: #9a9aa2;
+    --borde: #34343a;
+    --acento: #2bb8a2;
+    --acento-texto: #0b1714;
+    --serie1: #2bb8a2;
+    --serie2: #f08a4b;
+    --aviso: #ff6b60;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--fondo);
+  color: var(--texto);
+}
+
+header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--borde);
+}
+
+h1 { font-size: 20px; margin: 0; }
+h1 span { font-weight: 400; color: var(--suave); }
+h2 { font-size: 16px; margin: 22px 0 8px; }
+h2:first-child { margin-top: 0; }
+h3 { font-size: 14px; margin: 18px 0 6px; color: var(--suave); }
+
+.estado { color: var(--suave); }
+.estado.error { color: var(--aviso); }
+
+main {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(320px, 1fr);
+  gap: 20px;
+  padding: 20px;
+}
+
+@media (max-width: 900px) {
+  main { grid-template-columns: 1fr; padding: 16px; }
+}
+
+.lienzo-video {
+  position: relative;
+  background: #000;
+  border-radius: 10px;
+  overflow: hidden;
+  aspect-ratio: 4 / 3;
+}
+
+.lienzo-video video,
+.lienzo-video canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  transform: scaleX(-1); /* espejo: se mueve como en un espejo */
+}
+
+.pulso {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff3;
+  transition: background 60ms;
+}
+.pulso.activo { background: var(--pinza); }
+.pulso.acento { background: #fff; }
+
+.aviso {
+  position: absolute;
+  inset: auto 0 0 0;
+  padding: 18px;
+  font-size: 28px;
+  font-weight: 700;
+  text-align: center;
+  color: #fff;
+  background: linear-gradient(transparent, #000a);
+}
+
+.controles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+fieldset {
+  border: 1px solid var(--borde);
+  border-radius: 8px;
+  background: var(--superficie);
+  padding: 8px 12px 12px;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+legend { font-weight: 600; padding: 0 4px; }
+
+label { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+input[type="number"] { width: 64px; }
+input[type="range"] { flex: 1; min-width: 80px; }
+output { min-width: 52px; font-variant-numeric: tabular-nums; color: var(--suave); }
+
+button, select, input {
+  font: inherit;
+  color: inherit;
+}
+button {
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--borde);
+  background: var(--superficie);
+  cursor: pointer;
+}
+button:disabled { opacity: 0.5; cursor: default; }
+button.primario {
+  background: var(--acento);
+  border-color: var(--acento);
+  color: var(--acento-texto);
+  font-weight: 600;
+}
+select, input[type="number"] {
+  padding: 3px 6px;
+  border-radius: 5px;
+  border: 1px solid var(--borde);
+  background: var(--superficie);
+}
+
+.panel {
+  background: var(--superficie);
+  border: 1px solid var(--borde);
+  border-radius: 10px;
+  padding: 16px 18px;
+}
+
+.metricas {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 16px;
+  margin: 0;
+}
+.metricas dt { color: var(--suave); }
+.metricas dd { margin: 0; font-variant-numeric: tabular-nums; text-align: right; }
+.metricas .destacado { font-weight: 700; color: var(--texto); }
+
+.grafica {
+  width: 100%;
+  height: auto;
+  margin-top: 10px;
+  border: 1px solid var(--borde);
+  border-radius: 6px;
+}
+.leyenda { font-size: 12px; color: var(--suave); margin: 4px 0 0; }
+.c1 { color: var(--serie1); }
+.c2 { color: var(--serie2); }
+
+.botones, .fila { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-top: 10px; }
+.ayuda { color: var(--suave); margin: 0 0 6px; }
+.cal-progreso { margin-top: 10px; font-weight: 600; min-height: 1.4em; }
+.cal-resultado { margin-top: 8px; }
+.cal-resultado p { margin: 4px 0; }
+.compensacion { margin-top: 12px; }
